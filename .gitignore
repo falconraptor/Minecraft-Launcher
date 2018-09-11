@@ -167,4 +167,4 @@ fabric.properties
 .idea/httpRequests
 
 # test DB
-*.db
+*.db*

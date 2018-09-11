@@ -45,7 +45,7 @@ def get_versions(c, url=MODS):
                 if name not in versions:
                     to_add.append((name, version['value'], last))
     if to_add:
-        c.executemany('INSERT INTO Version VALUES (?, ?, ?)', to_add)
+        c.executemany('INSERT INTO Version (Name, ID, Parent) VALUES (?, ?, ?)', to_add)
         c.commit()
 
 
@@ -140,4 +140,4 @@ if __name__ == '__main__':
     c.row_factory = MyRow
     create_tables(c)
     get_versions(c)
-    # get_mods(c, list(c.execute('SELECT * FROM Version WHERE Name=? LIMIT 1', ('1.12.2',)))[0])
+    get_mods(c, list(c.execute('SELECT * FROM Version WHERE Name=? LIMIT 1', ('1.12.2',)))[0])
