@@ -1,32 +1,9 @@
-from sqlite3 import connect, Row, PARSE_DECLTYPES, PARSE_COLNAMES
 from threading import Thread
 
-import requests
 from bs4 import BeautifulSoup, Tag
+import requests
 
-BASE = 'https://minecraft.curseforge.com'
-MODS = BASE + '/mc-mods'
-
-
-class MyRow(Row):
-    def __getattr__(self, item):
-        return self.__getitem__(item)
-
-
-def create_tables(c):
-    c.executescript('''
-        CREATE TABLE IF NOT EXISTS Member (Name VARCHAR(255) PRIMARY KEY, URL TEXT NOT NULL, Type VARCHAR(100) NOT NULL DEFAULT 'Owner');
-        CREATE TABLE IF NOT EXISTS Category (Name VARCHAR(255) PRIMARY KEY, IMG_URL TEXT NOT NULL, URL TEXT NOT NULL);
-        CREATE TABLE IF NOT EXISTS Version (Name VARCHAR(255) PRIMARY KEY, ID VARCHAR(100) NOT NULL UNIQUE, Parent VARCHAR(255) NOT NULL DEFAULT '', Last_Updated TIMESTAMP);
-        CREATE TABLE IF NOT EXISTS Mod (Name VARCHAR(255) PRIMARY KEY, Short_Description VARCHAR(255) NOT NULL, Description TEXT NOT NULL DEFAULT '', Downloads INTEGER NOT NULL, ID VARCHAR(255) NOT NULL DEFAULT '', IMG_URL TEXT NOT NULL, URL TEXT NOT NULL, Last_Updated TIMESTAMP NOT NULL, Created TIMESTAMP, Last_Checked TIMESTAMP);
-        CREATE TABLE IF NOT EXISTS Mod_Version (ID INTEGER PRIMARY KEY, Mod VARCHAR(255) NOT NULL, Version VARCHAR(255) NOT NULL);
-        CREATE TABLE IF NOT EXISTS Mod_Category (ID INTEGER PRIMARY KEY, Mod VARCHAR(255) NOT NULL, Category VARCHAR(255) NOT NULL);
-        CREATE TABLE IF NOT EXISTS Mod_Member (ID INTEGER PRIMARY KEY, Mod VARCHAR(255) NOT NULL, Member VARCHAR(255) NOT NULL);
-        CREATE TABLE IF NOT EXISTS File (ID INTEGER PRIMARY KEY, Mod VARCHAR(255) NOT NULL, Name TEXT NOT NULL, Size INTEGER NOT NULL, Uploaded TIMESTAMP NOT NULL, Downloads INTEGER NOT NULL, Type VARCHAR(1) NOT NULL DEFAULT 'R', Uploaded_By VARCHAR(255) NOT NULL DEFAULT '', Changelog TEXT NOT NULL DEFAULT '', Parent_File INTEGER);
-        CREATE TABLE IF NOT EXISTS File_Version (ID INTEGER PRIMARY KEY, File TEXT NOT NULL, Version VARCHAR(255) NOT NULL);
-        CREATE TABLE IF NOT EXISTS File_Java_Version (ID INTEGER PRIMARY KEY, File TEXT NOT NULL, Java VARCHAR(255) NOT NULL);
-    ''')
-    c.commit()
+from constants import MODS
 
 
 def get_versions(c, url=MODS):
@@ -129,16 +106,3 @@ def get_mods(c, version, url=MODS, total_pages=0, start_page=1):
     c.execute("UPDATE Version SET Last_Updated=DATETIME('now') WHERE Name=?", (version.Name,))
     c.commit()
     return total_pages
-
-
-def startup():
-    c = connect('client.db', detect_types=PARSE_DECLTYPES | PARSE_COLNAMES, check_same_thread=False)
-    c.row_factory = MyRow
-    create_tables(c)
-    get_versions(c)
-    return c
-
-
-if __name__ == '__main__':
-    c = startup()
-    get_mods(c, list(c.execute('SELECT * FROM Version WHERE Name=? LIMIT 1', ('1.12.2',)))[0])
