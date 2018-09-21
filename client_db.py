@@ -1,4 +1,4 @@
-from sqlite3 import connect, Row
+from sqlite3 import connect, Row, PARSE_DECLTYPES, PARSE_COLNAMES
 from threading import Thread
 
 import requests
@@ -26,6 +26,7 @@ def create_tables(c):
         CREATE TABLE IF NOT EXISTS File_Version (ID INTEGER PRIMARY KEY, File TEXT NOT NULL, Version VARCHAR(255) NOT NULL);
         CREATE TABLE IF NOT EXISTS File_Java_Version (ID INTEGER PRIMARY KEY, File TEXT NOT NULL, Java VARCHAR(255) NOT NULL);
     ''')
+    c.commit()
 
 
 def get_versions(c, url=MODS):
@@ -115,29 +116,29 @@ def get_mods(c, version, url=MODS, total_pages=0, start_page=1):
     [t.join() for t in threads]
     if add_members:
         c.executemany('INSERT INTO Member (Name, URL) VALUES (?, ?)', add_members)
-        c.commit()
     if add_categories:
         c.executemany('INSERT INTO Category VALUES (?, ?, ?)', add_categories)
-        c.commit()
     if add_mods:
         c.executemany('INSERT INTO Mod (Name, Short_Description, Downloads, IMG_URL, URL, Last_Updated) VALUES (?, ?, ?, ?, ?, ?)', add_mods)
-        c.commit()
     if add_mod_versions:
         c.executemany('INSERT INTO Mod_Version (Mod, Version) VALUES (?, ?)', add_mod_versions)
-        c.commit()
     if add_mod_members:
         c.executemany('INSERT INTO Mod_Member (Mod, Member) VALUES (?, ?)', add_mod_members)
-        c.commit()
     if add_mod_categories:
         c.executemany('INSERT INTO Mod_Category (Mod, Category) VALUES (?, ?)', add_mod_categories)
-        c.commit()
     c.execute("UPDATE Version SET Last_Updated=DATETIME('now') WHERE Name=?", (version.Name,))
+    c.commit()
     return total_pages
 
 
-if __name__ == '__main__':
-    c = connect('client.db')
+def startup():
+    c = connect('client.db', detect_types=PARSE_DECLTYPES | PARSE_COLNAMES, check_same_thread=False)
     c.row_factory = MyRow
     create_tables(c)
     get_versions(c)
+    return c
+
+
+if __name__ == '__main__':
+    c = startup()
     get_mods(c, list(c.execute('SELECT * FROM Version WHERE Name=? LIMIT 1', ('1.12.2',)))[0])
