@@ -1,7 +1,7 @@
 from datetime import datetime, timedelta
 from threading import Thread
 
-from bs4 import BeautifulSoup, Tag
+from bs4 import BeautifulSoup
 import requests
 
 from db import MyRow
@@ -16,22 +16,20 @@ def get_versions(c):
     versions = {n.Name for n in cu.fetchall()}
     last = ''
     to_add = []
-    for version in BeautifulSoup(requests.get(MODS).text, 'html.parser').find('select', {'id': 'filter-game-version'}):
-        if isinstance(version, Tag) and version['value']:
+    for version in BeautifulSoup(requests.get(MODS).text, 'html.parser').find('select', {'id': 'filter-game-version'}).find_all('option'):
+        if version['value']:
             name = version.text.replace('\xa0', '')
-            if version.attrs.get('class', [''])[-1] == 'game-version-type':
+            parent = version.attrs.get('class', [''])[-1] == 'game-version-type'
+            if parent:
                 last = name
-                if name not in versions:
-                    to_add.append((name, version['value'], ''))
-            else:
-                if name not in versions:
-                    to_add.append((name, version['value'], last))
+            if name not in versions:
+                to_add.append((name, version['value'], '' if parent else last))
     if to_add:
         c.executemany('INSERT INTO Version (Name, ID, Parent) VALUES (?, ?, ?)', to_add)
         c.commit()
 
 
-def get_mods(c, version, total_pages=0, start_page=1):
+def get_mods(c, version):
     if not isinstance(version, MyRow):
         version = list(c.execute('SELECT * FROM Version WHERE Name=? LIMIT 1', (version,)))[0]
     if version.Last_Updated and version.Last_Updated > (datetime.utcnow() - timedelta(hours=1)):
@@ -48,11 +46,11 @@ def get_mods(c, version, total_pages=0, start_page=1):
     add_mod_members = []
     mod_categories = {ca.Mod + ca.Category for ca in c.execute('SELECT Mod, Category FROM Mod_Category')}
     add_mod_categories = []
-    if not total_pages:
-        total_pages = int(BeautifulSoup(requests.get(MODS + ('?filter-game-version={}'.format(version.ID) if version else '')).text, 'html.parser').find('section', {'role': 'main'}).find('div', {'class': 'listing-header'}).find_all('a', {'class': 'b-pagination-item'})[-1].text)
+    page_one = BeautifulSoup(requests.get(MODS + ('?filter-game-version={}'.format(version.ID) if version else '')).text, 'html.parser')
+    total_pages = int(page_one.find('section', {'role': 'main'}).find('div', {'class': 'listing-header'}).find_all('a', {'class': 'b-pagination-item'})[-1].text)
 
-    def process_page(page_num):
-        for mod in BeautifulSoup(requests.get('{}?page={}{}'.format(MODS, page_num, '&filter-game-version={}'.format(version.ID) if version else '')).text, 'html.parser').find_all('li', {'class': 'project-list-item'}):
+    def process_page(page_num, page=None):
+        for mod in (page or BeautifulSoup(requests.get('{}?page={}{}'.format(MODS, page_num, '&filter-game-version={}'.format(version.ID) if version else '')).text, 'html.parser')).find_all('li', {'class': 'project-list-item'}):
             elem = mod.find('div', {'class': 'name'}).find('a')
             if not elem:
                 continue
@@ -96,7 +94,7 @@ def get_mods(c, version, total_pages=0, start_page=1):
                 add_mod_versions.append((name, version.Name))
                 mod_versions.add(name + version.Name)
 
-    threads = [Thread(target=process_page, args=(i,)) for i in range(start_page, total_pages + 1)]
+    threads = [Thread(target=process_page, args=(i, page_one if i == 1 else None)) for i in range(1, total_pages + 1)]
     [t.start() for t in threads]
     [t.join() for t in threads]
     if add_members:
@@ -127,17 +125,17 @@ def get_mod_details(c, mod):
     add_mod_members = []
     change_title = []
     html = BeautifulSoup(requests.get('{}{}'.format(BASE, mod.URL)).text, 'html.parser')
-    for external in html.find_all('a', attrs={'class': 'external-link'}):
+    for external in html.find_all('a', {'class': 'external-link'}):
         mod[external.text.replace('Issues', 'Issue_Tracker').strip()] = external['href']
-    project, project_members = html.find_all('div', attrs={'class': 'cf-sidebar-wrapper'})[::2]
-    mod.ID = project.find('div', attrs={'class': 'info-data'}).text
-    mod.Created = datetime.fromtimestamp(int(project.find_all('div', attrs={'class': 'info-data'})[1].find('abbr')['data-epoch']))
-    mod.Description = str(html.find('div', attrs={'class': 'e-project-details-primary'}))
-    for member in project_members.find_all('div', attrs={'class': 'info-wrapper'}):
+    project, project_members = html.find_all('div', {'class': 'cf-sidebar-wrapper'})[::2]
+    mod.ID = project.find('div', {'class': 'info-data'}).text
+    mod.Created = datetime.fromtimestamp(int(project.find_all('div', {'class': 'info-data'})[1].find('abbr')['data-epoch']))
+    mod.Description = str(html.find('div', {'class': 'e-project-details-primary'}))
+    for member in project_members.find_all('div', {'class': 'info-wrapper'}):
         member = member.find('p')
         a = member.find('a')
         name = a.find('span').text
-        title = member.find('span', attrs={'class': 'title'}).text
+        title = member.find('span', {'class': 'title'}).text
         if name not in members:
             add_members.append((name, a['href']))
             members.add(name)
@@ -155,4 +153,56 @@ def get_mod_details(c, mod):
         for member in change_title:
             c.execute('UPDATE Mod_Member SET Type=? WHERE Mod=? AND Member=?', member)
     c.execute("UPDATE Mod SET ID=?, Created=?, Description=?, Wiki=?, Source=?, Issue_Tracker=?, Last_Description=DATETIME('now') WHERE Name=?", (mod.ID, mod.Created, mod.Description, mod.Wiki, mod.Source, mod.Issue_Tracker, mod.Name))
+    c.commit()
+
+
+def get_mod_files(c, mod):
+    if not isinstance(mod, MyRow):
+        mod = list(c.execute('SELECT * FROM Mod WHERE Name=? LIMIT 1', (mod,)))[0]
+    if mod.Last_Checked and mod.Last_Description > (datetime.utcnow() - timedelta(hours=1)):
+        return
+    mod_versions = {v.Mod + v.Version for v in c.execute('SELECT Mod, Version FROM Mod_Version')}
+    add_mod_versions = []
+    files = {f.ID for f in c.execute('SELECT ID FROM File')}
+    add_files = []
+    file_versions = {str(v.File_ID) + v.Version for v in c.execute('SELECT File_ID, Version FROM File_Version')}
+    add_file_version = []
+    page_one = BeautifulSoup(requests.get(BASE + mod.URL + '/files').text, 'html.parser').find('div', {'class': 'listing-container'})
+    header = page_one.find('div', {'class': 'listing-header'})
+    for version in header.find('div', {'class': 'listing-filters-wrapper'}).find('select', {'id': 'filter-game-version'}).find_all('option'):
+        if version['value']:
+            name = version.text.replace('\xa0', '')
+            if mod.Name + name not in mod_versions:
+                add_mod_versions.append((mod.Name, name))
+                mod_versions.add(mod.Name + name)
+    pages = header.find_all('a', {'class': 'b-pagination-item'})
+    total_pages = int(pages[-1].text) if pages else 1
+
+    def process_page(page_num, page=None):
+        for file in (page or BeautifulSoup(requests.get('{}{}/files?page={}'.format(BASE, mod.URL, page_num)).text, 'html.parser')).find_all('tr', {'class': 'project-file-list-item'}):
+            typ = file.find('td', {'class': 'project-file-release-type'}).find('div')['class'][0].split('-')[0][0].upper()
+            a = file.find('div', {'class': 'project-file-name-container'}).find('a')
+            i = int(a['href'].split('/')[-1])
+            name = a.text
+            size = file.find('td', {'class': 'project-file-size'}).text.strip()
+            date = datetime.fromtimestamp(int(file.find('td', {'class': 'project-file-date-uploaded'}).find('abbr')['data-epoch']))
+            version = file.find('span', {'class': 'version-label'}).text
+            downloads = int(file.find('td', {'class': 'project-file-downloads'}).text.strip().replace(',', ''))
+            if i not in files:
+                add_files.append((i, typ, name, size, date, downloads, mod.Name))
+                files.add(i)
+            if str(i) + version not in file_versions:
+                add_file_version.append((i, version))
+                file_versions.add(str(i) + version)
+
+    threads = [Thread(target=process_page, args=(i, page_one if i == 1 else None)) for i in range(1, total_pages + 1)]
+    [t.start() for t in threads]
+    [t.join() for t in threads]
+    if add_mod_versions:
+        c.executemany('INSERT INTO Mod_Version (Mod, Version) VALUES (?, ?)', add_mod_versions)
+    if add_files:
+        c.executemany('INSERT INTO File (ID, Type, Name, Size, Uploaded, Downloads, Mod) VALUES (?, ?, ?, ?, ?, ?, ?)', add_files)
+    if add_file_version:
+        c.executemany('INSERT INTO File_Version (File_ID, Version) VALUES (?, ?)', add_file_version)
+    c.execute("UPDATE Mod SET Last_Checked=DATETIME('now') WHERE Name=?", (mod.Name,))
     c.commit()
