@@ -206,3 +206,25 @@ def get_mod_files(c, mod):
         c.executemany('INSERT INTO File_Version (File_ID, Version) VALUES (?, ?)', add_file_version)
     c.execute("UPDATE Mod SET Last_Checked=DATETIME('now') WHERE Name=?", (mod.Name,))
     c.commit()
+
+
+def get_mod_file_changelog(c, file_id):
+    if not isinstance(file_id, MyRow):
+        file_id = list(c.execute('SELECT ID, Mod, Changelog FROM File WHERE ID=?', (file_id,)))[0]
+    if file_id.Changelog:
+        return
+    file_dependencies = {str(f.File_ID) + f.Dependency for f in c.execute('SELECT File_ID, Dependency FROM File_Dependency')}
+    add_file_dependencies = []
+    url = list(c.execute('SELECT URL FROM Mod WHERE Name=?', (file_id.Mod,)))[0].URL
+    html = BeautifulSoup(requests.get('{}{}/files/{}'.format(BASE, url, file_id.ID)).text, 'html.parser')
+    file_id.Uploaded_By = html.find('div', {'class': 'user-tag'}).find_all('a')[-1].text
+    file_id.Changelog = str(html.find('div', {'class': 'logbox'}))
+    for dependencies in html.find_all('div', {'class': 'project-tag-info'}):
+        name = dependencies.find('span').text
+        if str(file_id.ID) + name not in file_dependencies:
+            add_file_dependencies.append((file_id.ID, name))
+            file_dependencies.add(str(file_id.ID) + name)
+    if add_file_dependencies:
+        c.executemany('INSERT INTO File_Dependency (File_ID, Dependency) VALUES (?, ?)', add_file_dependencies)
+    c.execute('UPDATE File SET Changelog=?, Uploaded_By=? WHERE ID=?', (file_id.Changelog, file_id.Uploaded_By, file_id.ID))
+    c.commit()
