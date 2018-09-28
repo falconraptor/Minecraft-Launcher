@@ -1,7 +1,8 @@
 from datetime import datetime
 
 from db import startup
-from mods import get_mods, get_versions, get_mod_details, get_mod_files, get_mod_file_changelog
+from modpacks import get_modpack_versions, get_modpacks, get_modpack_details, get_modpack_files, get_modpack_file_changelog
+from mods import get_mods, get_mod_versions, get_mod_details, get_mod_files, get_mod_file_changelog
 
 if __name__ == '__main__':
     total = datetime.now()
@@ -9,19 +10,34 @@ if __name__ == '__main__':
     c = startup()
     start = datetime.now()
     print('db', start - _start)
-    get_versions(c)
+    get_mod_versions(c)
     _start = datetime.now()
-    print('versions', _start - start)
+    print('mod versions', _start - start)
     get_mods(c, '1.12.2')
     start = datetime.now()
     print('mods', start - _start)
     get_mod_details(c, 'Quark')
     _start = datetime.now()
-    print('mod_details', _start - start)
+    print('mod details', _start - start)
     get_mod_files(c, 'Quark')
     start = datetime.now()
-    print('mod_files', start - _start)
+    print('mod files', start - _start)
     get_mod_file_changelog(c, 2620164)
     _start = datetime.now()
-    print('file_changelog', _start - start)
-    print('total', _start - total)
+    print('mod file changelog', _start - start)
+    get_modpack_versions(c)
+    start = datetime.now()
+    print('modpack versions', start - _start)
+    get_modpacks(c, '1.12.2')
+    _start = datetime.now()
+    print('modpacks', _start - start)
+    get_modpack_details(c, 'SevTech: Ages')
+    start = datetime.now()
+    print('modpack details', start - _start)
+    get_modpack_files(c, 'SevTech: Ages')
+    _start = datetime.now()
+    print('modpack files', _start - start)
+    get_modpack_file_changelog(c, 2570732)
+    start = datetime.now()
+    print('modpack file changelog', start - _start)
+    print('total', start - total)

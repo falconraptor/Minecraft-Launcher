@@ -7,10 +7,10 @@ import requests
 from db import MyRow
 
 BASE = 'https://minecraft.curseforge.com'
-MODS = BASE + '/mc-mods'
+MODS = BASE + '/modpacks'
 
 
-def get_mod_versions(c):
+def get_modpack_versions(c):
     cu = c.cursor()
     cu.execute('SELECT Name FROM Version')
     versions = {n.Name for n in cu.fetchall()}
@@ -29,22 +29,22 @@ def get_mod_versions(c):
         c.commit()
 
 
-def get_mods(c, version):
+def get_modpacks(c, version):
     if not isinstance(version, MyRow):
         version = list(c.execute('SELECT * FROM Version WHERE Name=? LIMIT 1', (version,)))[0]
-    if version.Mods_Last_Updated and version.Mods_Last_Updated > (datetime.utcnow() - timedelta(hours=1)):
+    if version.Modpacks_Last_Updated and version.Modpacks_Last_Updated > (datetime.utcnow() - timedelta(hours=1)):
         return 0
     members = {m.Name for m in c.execute('SELECT Name FROM Member')}
     add_members = []
-    categories = {ca.Name: ca.URL for ca in c.execute('SELECT Name, URL FROM Mod_Category')}
+    categories = {ca.Name: ca.URL for ca in c.execute('SELECT Name, URL FROM Modpack_Category')}
     add_categories = []
-    mods = {m.Name for m in c.execute('SELECT Name FROM Mod')}
+    mods = {m.Name for m in c.execute('SELECT Name FROM Modpack')}
     add_mods = []
-    mod_versions = {v.Mod + v.Version for v in c.execute('SELECT Mod, Version FROM Mod_Version')}
+    mod_versions = {v.Mod + v.Version for v in c.execute('SELECT Mod, Version FROM Modpack_Version')}
     add_mod_versions = []
-    mod_members = {m.Mod + m.Member: m.Type for m in c.execute('SELECT Mod, Member, Type FROM Mod_Member')}
+    mod_members = {m.Mod + m.Member: m.Type for m in c.execute('SELECT Mod, Member, Type FROM Modpack_Member')}
     add_mod_members = []
-    mod_categories = {ca.Mod + ca.Category for ca in c.execute('SELECT Mod, Category FROM Mod_Category_Map')}
+    mod_categories = {ca.Mod + ca.Category for ca in c.execute('SELECT Mod, Category FROM Modpack_Category_Map')}
     add_mod_categories = []
     page_one = BeautifulSoup(requests.get(MODS + ('?filter-game-version={}'.format(version.ID) if version else '')).text, 'html.parser')
     total_pages = int(page_one.find('section', {'role': 'main'}).find('div', {'class': 'listing-header'}).find_all('a', {'class': 'b-pagination-item'})[-1].text)
@@ -100,28 +100,28 @@ def get_mods(c, version):
     if add_members:
         c.executemany('INSERT INTO Member (Name, URL) VALUES (?, ?)', add_members)
     if add_categories:
-        c.executemany('INSERT INTO Mod_Category VALUES (?, ?, ?)', add_categories)
+        c.executemany('INSERT INTO Modpack_Category VALUES (?, ?, ?)', add_categories)
     if add_mods:
-        c.executemany('INSERT INTO Mod (Name, Short_Description, Downloads, IMG_URL, URL, Last_Updated) VALUES (?, ?, ?, ?, ?, ?)', add_mods)
+        c.executemany('INSERT INTO Modpack (Name, Short_Description, Downloads, IMG_URL, URL, Last_Updated) VALUES (?, ?, ?, ?, ?, ?)', add_mods)
     if add_mod_versions:
-        c.executemany('INSERT INTO Mod_Version (Mod, Version) VALUES (?, ?)', add_mod_versions)
+        c.executemany('INSERT INTO Modpack_Version (Mod, Version) VALUES (?, ?)', add_mod_versions)
     if add_mod_members:
-        c.executemany('INSERT INTO Mod_Member (Mod, Member) VALUES (?, ?)', add_mod_members)
+        c.executemany('INSERT INTO Modpack_Member (Mod, Member) VALUES (?, ?)', add_mod_members)
     if add_mod_categories:
-        c.executemany('INSERT INTO Mod_Category_Map (Mod, Category) VALUES (?, ?)', add_mod_categories)
-    c.execute("UPDATE Version SET Mods_Last_Updated=DATETIME('now') WHERE Name=?", (version.Name,))
+        c.executemany('INSERT INTO Modpack_Category_Map (Mod, Category) VALUES (?, ?)', add_mod_categories)
+    c.execute("UPDATE Version SET Modpacks_Last_Updated=DATETIME('now') WHERE Name=?", (version.Name,))
     c.commit()
     return total_pages
 
 
-def get_mod_details(c, mod):
+def get_modpack_details(c, mod):
     if not isinstance(mod, MyRow):
-        mod = list(c.execute('SELECT * FROM Mod WHERE Name=? LIMIT 1', (mod,)))[0]
+        mod = list(c.execute('SELECT * FROM Modpack WHERE Name=? LIMIT 1', (mod,)))[0]
     if mod.Last_Description and mod.Last_Description > (datetime.utcnow() - timedelta(days=1)):
         return
     members = {m.Name for m in c.execute('SELECT Name FROM Member')}
     add_members = []
-    mod_members = {m.Mod + m.Member: m.Type for m in c.execute('SELECT Mod, Member, Type FROM Mod_Member')}
+    mod_members = {m.Mod + m.Member: m.Type for m in c.execute('SELECT Mod, Member, Type FROM Modpack_Member')}
     add_mod_members = []
     change_title = []
     html = BeautifulSoup(requests.get('{}{}'.format(BASE, mod.URL)).text, 'html.parser')
@@ -148,24 +148,24 @@ def get_mod_details(c, mod):
     if add_members:
         c.executemany('INSERT INTO Member (Name, URL) VALUES (?, ?)', add_members)
     if add_mod_members:
-        c.executemany('INSERT INTO Mod_Member (Mod, Member, Type) VALUES (?, ?, ?)', add_mod_members)
+        c.executemany('INSERT INTO Modpack_Member (Mod, Member, Type) VALUES (?, ?, ?)', add_mod_members)
     if change_title:
         for member in change_title:
-            c.execute('UPDATE Mod_Member SET Type=? WHERE Mod=? AND Member=?', member)
-    c.execute("UPDATE Mod SET ID=?, Created=?, Description=?, Wiki=?, Source=?, Issue_Tracker=?, Last_Description=DATETIME('now') WHERE Name=?", (mod.ID, mod.Created, mod.Description, mod.Wiki, mod.Source, mod.Issue_Tracker, mod.Name))
+            c.execute('UPDATE Modpack_Member SET Type=? WHERE Mod=? AND Member=?', member)
+    c.execute("UPDATE Modpack SET ID=?, Created=?, Description=?, Wiki=?, Source=?, Issue_Tracker=?, Last_Description=DATETIME('now') WHERE Name=?", (mod.ID, mod.Created, mod.Description, mod.Wiki, mod.Source, mod.Issue_Tracker, mod.Name))
     c.commit()
 
 
-def get_mod_files(c, mod):
+def get_modpack_files(c, mod):
     if not isinstance(mod, MyRow):
-        mod = list(c.execute('SELECT * FROM Mod WHERE Name=? LIMIT 1', (mod,)))[0]
+        mod = list(c.execute('SELECT * FROM Modpack WHERE Name=? LIMIT 1', (mod,)))[0]
     if mod.Last_Checked and mod.Last_Checked > (datetime.utcnow() - timedelta(hours=1)):
         return
-    mod_versions = {v.Mod + v.Version for v in c.execute('SELECT Mod, Version FROM Mod_Version')}
+    mod_versions = {v.Mod + v.Version for v in c.execute('SELECT Mod, Version FROM Modpack_Version')}
     add_mod_versions = []
-    files = {f.ID for f in c.execute('SELECT ID FROM Mod_File')}
+    files = {f.ID for f in c.execute('SELECT ID FROM Modpack_File')}
     add_files = []
-    file_versions = {str(v.File_ID) + v.Version for v in c.execute('SELECT File_ID, Version FROM Mod_File_Version')}
+    file_versions = {str(v.File_ID) + v.Version for v in c.execute('SELECT File_ID, Version FROM Modpack_File_Version')}
     add_file_version = []
     page_one = BeautifulSoup(requests.get(BASE + mod.URL + '/files').text, 'html.parser').find('div', {'class': 'listing-container'})
     header = page_one.find('div', {'class': 'listing-header'})
@@ -199,32 +199,38 @@ def get_mod_files(c, mod):
     [t.start() for t in threads]
     [t.join() for t in threads]
     if add_mod_versions:
-        c.executemany('INSERT INTO Mod_Version (Mod, Version) VALUES (?, ?)', add_mod_versions)
+        c.executemany('INSERT INTO Modpack_Version (Mod, Version) VALUES (?, ?)', add_mod_versions)
     if add_files:
-        c.executemany('INSERT INTO Mod_File (ID, Type, Name, Size, Uploaded, Downloads, Mod) VALUES (?, ?, ?, ?, ?, ?, ?)', add_files)
+        c.executemany('INSERT INTO Modpack_File (ID, Type, Name, Size, Uploaded, Downloads, Mod) VALUES (?, ?, ?, ?, ?, ?, ?)', add_files)
     if add_file_version:
-        c.executemany('INSERT INTO Mod_File_Version (File_ID, Version) VALUES (?, ?)', add_file_version)
-    c.execute("UPDATE Mod SET Last_Checked=DATETIME('now') WHERE Name=?", (mod.Name,))
+        c.executemany('INSERT INTO Modpack_File_Version (File_ID, Version) VALUES (?, ?)', add_file_version)
+    c.execute("UPDATE Modpack SET Last_Checked=DATETIME('now') WHERE Name=?", (mod.Name,))
     c.commit()
 
 
-def get_mod_file_changelog(c, file_id):
+def get_modpack_file_changelog(c, file_id):
     if not isinstance(file_id, MyRow):
-        file_id = list(c.execute('SELECT ID, Mod, Changelog FROM Mod_File WHERE ID=?', (file_id,)))[0]
+        file_id = list(c.execute('SELECT ID, Mod, Changelog FROM Modpack_File WHERE ID=?', (file_id,)))[0]
     if file_id.Changelog:
         return
-    file_dependencies = {str(f.File_ID) + f.Dependency for f in c.execute('SELECT File_ID, Dependency FROM Mod_File_Dependency')}
+    file_dependencies = {str(f.File_ID) + f.Dependency for f in c.execute('SELECT File_ID, Dependency FROM Modpack_File_Dependency')}
     add_file_dependencies = []
-    url = list(c.execute('SELECT URL FROM Mod WHERE Name=?', (file_id.Mod,)))[0].URL
+    url = list(c.execute('SELECT URL FROM Modpack WHERE Name=?', (file_id.Mod,)))[0].URL
     html = BeautifulSoup(requests.get('{}{}/files/{}'.format(BASE, url, file_id.ID)).text, 'html.parser')
     file_id.Uploaded_By = html.find('div', {'class': 'user-tag'}).find_all('a')[-1].text
     file_id.Changelog = str(html.find('div', {'class': 'logbox'}))
+    for tr in html.find_all('tr', {'class': 'project-file-list-item'}):
+        a = tr.find('td', {'class': 'project-file-name'}).find_all('a')[-1]
+        if 'server files' in (a.text or '').lower().strip():
+            file_id.Server_ID = int(a['href'].split('/')[-1])
+            file_id.Server_Size = tr.find('td', {'class': 'project-file-size'}).text.strip()
+            file_id.Server_Downloads = int(tr.find('td', {'class': 'project-file-downloads'}).text.replace(',', ''))
     for dependencies in html.find_all('div', {'class': 'project-tag-info'}):
         name = dependencies.find('span').text
         if str(file_id.ID) + name not in file_dependencies:
             add_file_dependencies.append((file_id.ID, name))
             file_dependencies.add(str(file_id.ID) + name)
     if add_file_dependencies:
-        c.executemany('INSERT INTO Mod_File_Dependency (File_ID, Dependency) VALUES (?, ?)', add_file_dependencies)
-    c.execute('UPDATE Mod_File SET Changelog=?, Uploaded_By=? WHERE ID=?', (file_id.Changelog, file_id.Uploaded_By, file_id.ID))
+        c.executemany('INSERT INTO Modpack_File_Dependency (File_ID, Dependency) VALUES (?, ?)', add_file_dependencies)
+    c.execute('UPDATE Modpack_File SET Changelog=?, Uploaded_By=?, Server_ID=?, Server_Size=?, Server_Downloads=? WHERE ID=?', (file_id.Changelog, file_id.Uploaded_By, file_id.Server_ID, file_id.Server_Size, file_id.Server_Downloads, file_id.ID))
     c.commit()
