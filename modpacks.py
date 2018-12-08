@@ -1,22 +1,20 @@
 from datetime import datetime, timedelta
 from threading import Thread
 
-from bs4 import BeautifulSoup
 import requests
+from bs4 import BeautifulSoup
 
 from db import MyRow
 
 BASE = 'https://minecraft.curseforge.com'
-MODS = BASE + '/modpacks'
+MODPACKS = BASE + '/modpacks'
 
 
 def get_modpack_versions(c):
-    cu = c.cursor()
-    cu.execute('SELECT Name FROM Version')
-    versions = {n.Name for n in cu.fetchall()}
+    versions = {n.Name for n in c.execute('SELECT Name FROM Version')}
     last = ''
     to_add = []
-    for version in BeautifulSoup(requests.get(MODS).text, 'html.parser').find('select', {'id': 'filter-game-version'}).find_all('option'):
+    for version in BeautifulSoup(requests.get(MODPACKS).text, 'public.parser').find('select', {'id': 'filter-game-version'}).find_all('option'):
         if version['value']:
             name = version.text.replace('\xa0', '')
             parent = version.attrs.get('class', [''])[-1] == 'game-version-type'
@@ -27,13 +25,14 @@ def get_modpack_versions(c):
     if to_add:
         c.executemany('INSERT INTO Version (Name, ID, Parent) VALUES (?, ?, ?)', to_add)
         c.commit()
+    return c.execute('SELECT * FROM Version')
 
 
 def get_modpacks(c, version):
     if not isinstance(version, MyRow):
         version = list(c.execute('SELECT * FROM Version WHERE Name=? LIMIT 1', (version,)))[0]
     if version.Modpacks_Last_Updated and version.Modpacks_Last_Updated > (datetime.utcnow() - timedelta(hours=1)):
-        return 0
+        return c.execute('SELECT * FROM Modpack WHERE Name IN (SELECT Mod FROM Modpack_Version WHERE Version=?)', (version.Name,)), 0
     members = {m.Name for m in c.execute('SELECT Name FROM Member')}
     add_members = []
     categories = {ca.Name: ca.URL for ca in c.execute('SELECT Name, URL FROM Modpack_Category')}
@@ -46,11 +45,14 @@ def get_modpacks(c, version):
     add_mod_members = []
     mod_categories = {ca.Mod + ca.Category for ca in c.execute('SELECT Mod, Category FROM Modpack_Category_Map')}
     add_mod_categories = []
-    page_one = BeautifulSoup(requests.get(MODS + ('?filter-game-version={}'.format(version.ID) if version else '')).text, 'html.parser')
-    total_pages = int(page_one.find('section', {'role': 'main'}).find('div', {'class': 'listing-header'}).find_all('a', {'class': 'b-pagination-item'})[-1].text)
+    page_one = BeautifulSoup(requests.get(MODPACKS + ('?filter-game-version={}'.format(version.ID) if version else '')).text, 'public.parser')
+    try:
+        total_pages = int(page_one.find('section', {'role': 'main'}).find('div', {'class': 'listing-header'}).find_all('a', {'class': 'b-pagination-item'})[-1].text)
+    except IndexError:
+        total_pages = 1
 
     def process_page(page_num, page=None):
-        for mod in (page or BeautifulSoup(requests.get('{}?page={}{}'.format(MODS, page_num, '&filter-game-version={}'.format(version.ID) if version else '')).text, 'html.parser')).find_all('li', {'class': 'project-list-item'}):
+        for mod in (page or BeautifulSoup(requests.get('{}?page={}{}'.format(MODPACKS, page_num, '&filter-game-version={}'.format(version.ID) if version else '')).text, 'public.parser')).find_all('li', {'class': 'project-list-item'}):
             elem = mod.find('div', {'class': 'name'}).find('a')
             if not elem:
                 continue
@@ -111,7 +113,7 @@ def get_modpacks(c, version):
         c.executemany('INSERT INTO Modpack_Category_Map (Mod, Category) VALUES (?, ?)', add_mod_categories)
     c.execute("UPDATE Version SET Modpacks_Last_Updated=DATETIME('now') WHERE Name=?", (version.Name,))
     c.commit()
-    return total_pages
+    return c.execute('SELECT * FROM Modpack WHERE Name IN (SELECT Mod FROM Modpack_Version WHERE Version=?)', (version.Name,)), total_pages
 
 
 def get_modpack_details(c, mod):
@@ -124,7 +126,7 @@ def get_modpack_details(c, mod):
     mod_members = {m.Mod + m.Member: m.Type for m in c.execute('SELECT Mod, Member, Type FROM Modpack_Member')}
     add_mod_members = []
     change_title = []
-    html = BeautifulSoup(requests.get('{}{}'.format(BASE, mod.URL)).text, 'html.parser')
+    html = BeautifulSoup(requests.get('{}{}'.format(BASE, mod.URL)).text, 'public.parser')
     for external in html.find_all('a', {'class': 'external-link'}):
         mod[external.text.replace('Issues', 'Issue_Tracker').strip()] = external['href']
     project, project_members = html.find_all('div', {'class': 'cf-sidebar-wrapper'})[::2]
@@ -167,7 +169,7 @@ def get_modpack_files(c, mod):
     add_files = []
     file_versions = {str(v.File_ID) + v.Version for v in c.execute('SELECT File_ID, Version FROM Modpack_File_Version')}
     add_file_version = []
-    page_one = BeautifulSoup(requests.get(BASE + mod.URL + '/files').text, 'html.parser').find('div', {'class': 'listing-container'})
+    page_one = BeautifulSoup(requests.get(BASE + mod.URL + '/files').text, 'public.parser').find('div', {'class': 'listing-container'})
     header = page_one.find('div', {'class': 'listing-header'})
     for version in header.find('div', {'class': 'listing-filters-wrapper'}).find('select', {'id': 'filter-game-version'}).find_all('option'):
         if version['value']:
@@ -179,7 +181,7 @@ def get_modpack_files(c, mod):
     total_pages = int(pages[-1].text) if pages else 1
 
     def process_page(page_num, page=None):
-        for file in (page or BeautifulSoup(requests.get('{}{}/files?page={}'.format(BASE, mod.URL, page_num)).text, 'html.parser')).find_all('tr', {'class': 'project-file-list-item'}):
+        for file in (page or BeautifulSoup(requests.get('{}{}/files?page={}'.format(BASE, mod.URL, page_num)).text, 'public.parser')).find_all('tr', {'class': 'project-file-list-item'}):
             typ = file.find('td', {'class': 'project-file-release-type'}).find('div')['class'][0].split('-')[0][0].upper()
             a = file.find('div', {'class': 'project-file-name-container'}).find('a')
             i = int(a['href'].split('/')[-1])
@@ -216,7 +218,7 @@ def get_modpack_file_changelog(c, file_id):
     file_dependencies = {str(f.File_ID) + f.Dependency for f in c.execute('SELECT File_ID, Dependency FROM Modpack_File_Dependency')}
     add_file_dependencies = []
     url = list(c.execute('SELECT URL FROM Modpack WHERE Name=?', (file_id.Mod,)))[0].URL
-    html = BeautifulSoup(requests.get('{}{}/files/{}'.format(BASE, url, file_id.ID)).text, 'html.parser')
+    html = BeautifulSoup(requests.get('{}{}/files/{}'.format(BASE, url, file_id.ID)).text, 'public.parser')
     file_id.Uploaded_By = html.find('div', {'class': 'user-tag'}).find_all('a')[-1].text
     file_id.Changelog = str(html.find('div', {'class': 'logbox'}))
     for tr in html.find_all('tr', {'class': 'project-file-list-item'}):
