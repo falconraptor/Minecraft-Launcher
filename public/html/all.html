@@ -17,11 +17,9 @@
             <div class="float-right form-inline">
                 <label>Category: <select class="form-control">
                     <option>All</option>
-                    ~~categories~~
                 </select></label>
-                <label>Version: <select class="form-control">
+                <label>Version: <select class="form-control" id="versions">
                     <option>All</option>
-                    ~~versions~~
                 </select></label>
                 <label>Sort By: <select class="form-control">
                     <option>Author</option>
@@ -34,5 +32,13 @@
         <script src="/static/js/jquery-3.2.1.min.js"></script>
         <script src="/static/js/popper.min.js"></script>
         <script src="/static/js/bootstrap.min.js"></script>
+        <script>
+            $(function () {
+                $.ajax({
+                    url: '/api/get_modpack_versions/',
+                    success: function(_) {$('#versions').html('<option>All</option>' + $.map(_.results, function(elem) {return '<option value="' + elem.ID + '">' + elem.Name + '</option>'}).join(''))}
+                })
+            })
+        </script>
     </body>
 </html>

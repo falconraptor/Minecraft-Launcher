@@ -11,19 +11,30 @@ MODPACKS = BASE + '/modpacks'
 
 
 def get_modpack_versions(c):
-    versions = {n.Name for n in c.execute('SELECT Name FROM Version')}
-    last = ''
-    to_add = []
-    for version in BeautifulSoup(requests.get(MODPACKS).text, 'html.parser').find('select', {'id': 'filter-game-version'}).find_all('option'):
-        if version['value']:
-            name = version.text.replace('\xa0', '')
-            parent = version.attrs.get('class', [''])[-1] == 'game-version-type'
-            if parent:
-                last = name
-            if name not in versions:
-                to_add.append((name, version['value'], '' if parent else last))
-    if to_add:
-        c.executemany('INSERT INTO Version (Name, ID, Parent) VALUES (?, ?, ?)', to_add)
+    now = datetime.now()
+    try:
+        last_updated = list(c.execute('SELECT Last_Updated FROM Version_Updated ORDER BY ID LIMIT 1'))[0].Last_Updated
+    except IndexError:
+        last_updated = 0
+    if not last_updated or last_updated < now - timedelta(days=1):
+        versions = {n.Name for n in c.execute('SELECT Name FROM Version')}
+        last = ''
+        to_add = []
+        i = 0
+        for version in BeautifulSoup(requests.get(MODPACKS).text, 'html.parser').find('select', {'id': 'filter-game-version'}).find_all('option'):
+            if version['value']:
+                name = version.text.replace('\xa0', '')
+                parent = version.attrs.get('class', [''])[-1] == 'game-version-type'
+                if parent:
+                    last = name
+                if name not in versions:
+                    to_add.append((i, name, version['value'], '' if parent else last))
+                i += 1
+        if to_add:
+            if versions:
+                c.executemany('UPDATE Version SET I = I + 1 WHERE I >= ?', map(lambda v: v[0], to_add))
+            c.executemany('INSERT INTO Version (I, Name, ID, Parent) VALUES (?, ?, ?, ?)', to_add)
+        c.execute('INSERT INTO Version_Updated (Last_Updated) VALUES (?)', (now,))
         c.commit()
     return c.execute('SELECT * FROM Version')
 
