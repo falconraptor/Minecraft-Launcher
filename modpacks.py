@@ -1,5 +1,6 @@
 from datetime import datetime, timedelta
-from threading import Thread
+from threading import Thread, Lock
+from time import sleep
 
 import requests
 from bs4 import BeautifulSoup
@@ -39,7 +40,7 @@ def get_modpack_versions(c):
     return c.execute('SELECT * FROM Version')
 
 
-def get_modpacks(c, version):
+def get_modpacks(c, version, sort=None, max_page=None):
     if not isinstance(version, MyRow):
         version = list(c.execute('SELECT * FROM Version WHERE Name=? LIMIT 1', (version,)))[0]
     if version.Modpacks_Last_Updated and version.Modpacks_Last_Updated > (datetime.utcnow() - timedelta(hours=1)):
@@ -61,9 +62,10 @@ def get_modpacks(c, version):
         total_pages = int(page_one.find('section', {'role': 'main'}).find('div', {'class': 'listing-header'}).find_all('a', {'class': 'b-pagination-item'})[-1].text)
     except IndexError:
         total_pages = 1
+    lock = Lock()
 
     def process_page(page_num, page=None):
-        for mod in (page or BeautifulSoup(requests.get('{}?page={}{}'.format(MODPACKS, page_num, '&filter-game-version={}'.format(version.ID) if version else '')).text, 'html.parser')).find_all('li', {'class': 'project-list-item'}):
+        for mod in (page or BeautifulSoup(requests.get('{}?page={}{}{}'.format(MODPACKS, page_num, '&filter-game-version={}'.format(version.ID) if version else '', '&filter-sort={}'.format(sort) if sort else '')).text, 'html.parser')).find_all('li', {'class': 'project-list-item'}):
             elem = mod.find('div', {'class': 'name'}).find('a')
             if not elem:
                 continue
@@ -73,6 +75,8 @@ def get_modpacks(c, version):
             if elem:
                 m['img'] = elem['src']
             elem = mod.find('span', {'class': 'byline'}).find('a')
+            while lock.locked():
+                sleep(.01)
             if elem:
                 a = elem.text.strip()
                 if a not in members:
@@ -109,21 +113,43 @@ def get_modpacks(c, version):
 
     threads = [Thread(target=process_page, args=(i, page_one if i == 1 else None)) for i in range(1, total_pages + 1)]
     [t.start() for t in threads]
-    [t.join() for t in threads]
-    if add_members:
-        c.executemany('INSERT INTO Member (Name, URL) VALUES (?, ?)', add_members)
-    if add_categories:
-        c.executemany('INSERT INTO Modpack_Category VALUES (?, ?, ?)', add_categories)
-    if add_mods:
-        c.executemany('INSERT INTO Modpack (Name, Short_Description, Downloads, IMG_URL, URL, Last_Updated) VALUES (?, ?, ?, ?, ?, ?)', add_mods)
-    if add_mod_versions:
-        c.executemany('INSERT INTO Modpack_Version (Mod, Version) VALUES (?, ?)', add_mod_versions)
-    if add_mod_members:
-        c.executemany('INSERT INTO Modpack_Member (Mod, Member) VALUES (?, ?)', add_mod_members)
-    if add_mod_categories:
-        c.executemany('INSERT INTO Modpack_Category_Map (Mod, Category) VALUES (?, ?)', add_mod_categories)
-    c.execute("UPDATE Version SET Modpacks_Last_Updated=DATETIME('now') WHERE Name=?", (version.Name,))
-    c.commit()
+
+    def db_add():
+        lock.acquire()
+        if add_members:
+            c.executemany('INSERT INTO Member (Name, URL) VALUES (?, ?)', add_members)
+        if add_categories:
+            c.executemany('INSERT INTO Modpack_Category VALUES (?, ?, ?)', add_categories)
+        if add_mods:
+            c.executemany('INSERT INTO Modpack (Name, Short_Description, Downloads, IMG_URL, URL, Last_Updated) VALUES (?, ?, ?, ?, ?, ?)', add_mods)
+        if add_mod_versions:
+            c.executemany('INSERT INTO Modpack_Version (Mod, Version) VALUES (?, ?)', add_mod_versions)
+        if add_mod_members:
+            c.executemany('INSERT INTO Modpack_Member (Mod, Member) VALUES (?, ?)', add_mod_members)
+        if add_mod_categories:
+            c.executemany('INSERT INTO Modpack_Category_Map (Mod, Category) VALUES (?, ?)', add_mod_categories)
+        c.execute("UPDATE Version SET Modpacks_Last_Updated=DATETIME('now') WHERE Name=?", (version.Name,))
+        c.commit()
+        lock.release()
+
+    if not max_page:
+        [t.join() for t in threads]
+        db_add()
+    else:
+        [t.join() for t in threads[:max_page]]
+        db_add()
+        add_members.clear()
+        add_categories.clear()
+        add_mods.clear()
+        add_mod_versions.clear()
+        add_mod_members.clear()
+        add_mod_categories.clear()
+
+        def wait():
+            [t.join() for t in threads[max_page:]]
+            db_add()
+
+        Thread(target=wait).start()
     return c.execute('SELECT * FROM Modpack WHERE Name IN (SELECT Mod FROM Modpack_Version WHERE Version=?)', (version.Name,)), total_pages
 
 

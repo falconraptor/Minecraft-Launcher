@@ -13,32 +13,49 @@
             <a class="nav-item nav-link" href="/settings/">Settings</a>
         </nav>
         <div class="clearfix">
-            <div class="float-left form-inline"><label>Search: <input id="search" type="search" class="form-control"></label></div>
+            <div class="float-left form-inline"><label>Search: <input id="search" type="search" class="form-control" oninput="filter()"></label></div>
             <div class="float-right form-inline">
-                <label>Category: <select class="form-control">
+                <label>Category: <select class="form-control" id="categories" onchange="filter()">
                     <option>All</option>
                 </select></label>
-                <label>Version: <select class="form-control" id="versions">
+                <label>Version: <select class="form-control" id="versions" onchange="filter()">
                     <option>All</option>
                 </select></label>
-                <label>Sort By: <select class="form-control">
-                    <option>Author</option>
-                    <option>Last Updated</option>
-                    <option>Name</option>
-                    <option>Total Downloads</option>
+                <label>Sort By: <select class="form-control" id="sort" onchange="filter()">
+                    <!--<option>Author</option>-->
+                    <option value="1">Date Created</option>
+                    <option value="2">Last Updated</option>
+                    <option value="3">Name</option>
+                    <!--<option value="4">Popularity</option>-->
+                    <option value="5">Total Downloads</option>
                 </select></label>
             </div>
         </div>
+        <div id="data"></div>
         <script src="/static/js/jquery-3.2.1.min.js"></script>
         <script src="/static/js/popper.min.js"></script>
         <script src="/static/js/bootstrap.min.js"></script>
         <script>
             $(function () {
                 $.ajax({
-                    url: '/api/get_modpack_versions/',
-                    success: function(_) {$('#versions').html('<option>All</option>' + $.map(_.results, function(elem) {return '<option value="' + elem.ID + '">' + elem.Name + '</option>'}).join(''))}
+                    url: '/api/all/get_modpack_versions/',
+                    success: function(_) {$('#versions').html('<option>All</option>' + $.map(_.results, function(elem) {return '<option>' + elem.Name + '</option>'}).join(''))}
+                })
+                $.ajax({
+                    url: '/api/all/get_modpack_categories/',
+                    success: function(_) {$('#categories').html('<option>All</option>' + $.map(_.results, function(elem) {return '<option>' + elem.Name + '</option>'}).join(''))}
                 })
             })
+            function filter(page) {
+                if (!page) page = 1
+                $.ajax({
+                    url: '/api/all/filter/',
+                    data: {search: $('#search').val().trim(), category: $('#categories').val(), version: $('#versions').val(), sort: $('#sort').val(), page: page},
+                    success: function (_) {
+                        $('#data').text(_.results)
+                    }
+                })
+            }
         </script>
     </body>
 </html>
