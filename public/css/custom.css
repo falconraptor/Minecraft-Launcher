@@ -11,3 +11,22 @@ a.nav-link, a.nav-link:hover {
 .form-control::placeholder {
     color: #fff
 }
+#top-nav {
+	border: none;
+	padding: 8px 16px 0 16px;
+}
+.clearfix {
+	background: #262c31;
+	padding: 10px;
+}
+.nav-tabs .nav-link.active {
+    background-color: #262c31;
+    border: none;
+}
+.form-control {
+	border: none;
+}
+.nav-tabs .nav-link:focus, .nav-tabs .nav-link:hover {
+    background: dimgrey !important;
+    background-color: #262c31 !important;
+}

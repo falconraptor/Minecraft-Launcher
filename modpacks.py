@@ -42,7 +42,11 @@ def get_modpack_versions(c):
 
 def get_modpacks(c, version, sort=None, max_page=None):
     if not isinstance(version, MyRow):
-        version = list(c.execute('SELECT * FROM Version WHERE Name=? LIMIT 1', (version,)))[0]
+        try:
+            version = list(c.execute('SELECT * FROM Version WHERE Name=? LIMIT 1', (version,)))[0]
+        except:
+            get_modpack_versions(c)
+            version = list(c.execute('SELECT * FROM Version WHERE Name=? LIMIT 1', (version,)))[0]
     if version.Modpacks_Last_Updated and version.Modpacks_Last_Updated > (datetime.utcnow() - timedelta(hours=1)):
         return c.execute('SELECT * FROM Modpack WHERE Name IN (SELECT Mod FROM Modpack_Version WHERE Version=?)', (version.Name,)), 0
     members = {m.Name for m in c.execute('SELECT Name FROM Member')}

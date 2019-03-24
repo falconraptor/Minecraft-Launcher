@@ -6,32 +6,34 @@
         <link href="/static/css/custom.css" rel="stylesheet">
     </head>
     <body style="background-color: #000; color: #fff">
-        <nav class="navbar navbar-dark bg-dark navbar-expand-sm navbar-nav nav-tabs nav-fill">
+        <nav id="top-nav" class="navbar navbar-dark bg-dark navbar-expand-sm navbar-nav nav-tabs nav-fill">
             <a class="nav-item nav-link" href="/">Installed Modpacks</a>
             <a class="nav-item nav-link active" href="/all/">All Modpacks</a>
             <a class="nav-item nav-link" href="#">Create Modpack</a>
             <a class="nav-item nav-link" href="/settings/">Settings</a>
         </nav>
         <div class="clearfix">
-            <div class="float-left form-inline"><label>Search: <input id="search" type="search" class="form-control" oninput="filter()"></label></div>
-            <div class="float-right form-inline">
-                <label>Category: <select class="form-control" id="categories" onchange="filter()">
-                    <option>All</option>
-                </select></label>
-                <label>Version: <select class="form-control" id="versions" onchange="filter()">
-                    <option>All</option>
-                </select></label>
-                <label>Sort By: <select class="form-control" id="sort" onchange="filter()">
-                    <!--<option>Author</option>-->
-                    <option value="1">Date Created</option>
-                    <option value="2">Last Updated</option>
-                    <option value="3">Name</option>
-                    <!--<option value="4">Popularity</option>-->
-                    <option value="5">Total Downloads</option>
-                </select></label>
+                <div class="float-left form-inline"><label>Search: <input id="search" type="search" class="ml-2 form-control" oninput="filter()"></label></div>
+                <div class="float-right form-inline">
+                    <label>Category: <select class="ml-2 form-control" id="categories" onchange="filter()">
+                        <option>All</option>
+                    </select></label>
+                    <label>Version: <select class="ml-2 form-control" id="versions" onchange="filter()">
+                        <option>All</option>
+                    </select></label>
+                    <label>Sort By: <select class="ml-2 form-control" id="sort" onchange="filter()">
+                        <!--<option>Author</option>-->
+                        <option value="1">Date Created</option>
+                        <option value="2">Last Updated</option>
+                        <option value="3">Name</option>
+                        <!--<option value="4">Popularity</option>-->
+                        <option value="5">Total Downloads</option>
+                    </select></label>
+                </div>
             </div>
+        <div class="container-fluid">
+            <div id="data"></div>
         </div>
-        <div id="data"></div>
         <script src="/static/js/jquery-3.2.1.min.js"></script>
         <script src="/static/js/popper.min.js"></script>
         <script src="/static/js/bootstrap.min.js"></script>
@@ -52,7 +54,12 @@
                     url: '/api/all/filter/',
                     data: {search: $('#search').val().trim(), category: $('#categories').val(), version: $('#versions').val(), sort: $('#sort').val(), page: page},
                     success: function (_) {
-                        $('#data').text(_.results)
+                        $('#data').html('')
+                        _.results.forEach(function(v){
+                            let row = '<div class="mod-block p-1"><div class="row"><div class="col-1"><img src="' + v.IMG_URL+ '" alt="" /></div><div class="col-7"><h1>'+ v.Name +'</h1> <p>'+ v.Short_Description +'</p></div><div class="col-3"><span style="color:#9a9a9a">Downloads: ' + v.Downloads+ '</span></div></div><hr style="background:#9a9a9a">'
+                            $('#data').append(row)
+
+                        }) 
                     }
                 })
             }
