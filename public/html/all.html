@@ -27,7 +27,7 @@
                         <option value="2">Last Updated</option>
                         <option value="3">Name</option>
                         <!--<option value="4">Popularity</option>-->
-                        <option value="5">Total Downloads</option>
+                        <option value="5" selected>Total Downloads</option>
                     </select></label>
                 </div>
             </div>
@@ -56,7 +56,7 @@
                     success: function (_) {
                         $('#data').html('')
                         _.results.forEach(function(v){
-                            let row = '<div class="mod-block p-1"><div class="row"><div class="col-1"><img src="' + v.IMG_URL+ '" alt="" /></div><div class="col-7"><h1>'+ v.Name +'</h1> <p>'+ v.Short_Description +'</p></div><div class="col-3"><span style="color:#9a9a9a">Downloads: ' + v.Downloads+ '</span></div></div><hr style="background:#9a9a9a">'
+                            let row = '<div class="mod-block p-1"><div class="row"><div class="col-1"><img src="' + v.IMG_URL+ '" alt=""/></div><div class="col-7"><h1>'+ v.Name + '</h1><p>'+ v.Short_Description +'</p></div><div class="col-3"><span style="color:#9a9a9a">Downloads: ' + v.Downloads.toLocaleString() + '</span></div></div><hr style="background: #9a9a9a">'
                             $('#data').append(row)
 
                         }) 

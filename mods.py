@@ -7,7 +7,7 @@ from bs4 import BeautifulSoup
 from db import MyRow
 
 BASE = 'https://minecraft.curseforge.com'
-MODS = BASE + '/mc-mods'
+MODS = f'{BASE}/mc-mods'
 
 
 def get_mod_versions(c):
@@ -45,11 +45,11 @@ def get_mods(c, version):
     add_mod_members = []
     mod_categories = {ca.Mod + ca.Category for ca in c.execute('SELECT Mod, Category FROM Mod_Category_Map')}
     add_mod_categories = []
-    page_one = BeautifulSoup(requests.get(MODS + ('?filter-game-version={}'.format(version.ID) if version else '')).text, 'html.parser')
+    page_one = BeautifulSoup(requests.get(f'{MODS}{f"?filter-game-version={version.ID}" if version else ""}').text, 'html.parser')
     total_pages = int(page_one.find('section', {'role': 'main'}).find('div', {'class': 'listing-header'}).find_all('a', {'class': 'b-pagination-item'})[-1].text)
 
     def process_page(page_num, page=None):
-        for mod in (page or BeautifulSoup(requests.get('{}?page={}{}'.format(MODS, page_num, '&filter-game-version={}'.format(version.ID) if version else '')).text, 'html.parser')).find_all('li', {'class': 'project-list-item'}):
+        for mod in (page or BeautifulSoup(requests.get(f'{MODS}?page={page_num}{f"&filter-game-version={version.ID}" if version else ""}').text, 'html.parser')).find_all('li', {'class': 'project-list-item'}):
             elem = mod.find('div', {'class': 'name'}).find('a')
             if not elem:
                 continue
@@ -123,7 +123,7 @@ def get_mod_details(c, mod):
     mod_members = {m.Mod + m.Member: m.Type for m in c.execute('SELECT Mod, Member, Type FROM Mod_Member')}
     add_mod_members = []
     change_title = []
-    html = BeautifulSoup(requests.get('{}{}'.format(BASE, mod.URL)).text, 'html.parser')
+    html = BeautifulSoup(requests.get(f'{BASE}{mod.URL}').text, 'html.parser')
     for external in html.find_all('a', {'class': 'external-link'}):
         mod[external.text.replace('Issues', 'Issue_Tracker').strip()] = external['href']
     project, project_members = html.find_all('div', {'class': 'cf-sidebar-wrapper'})[::2]
@@ -166,7 +166,7 @@ def get_mod_files(c, mod):
     add_files = []
     file_versions = {str(v.File_ID) + v.Version for v in c.execute('SELECT File_ID, Version FROM Mod_File_Version')}
     add_file_version = []
-    page_one = BeautifulSoup(requests.get(BASE + mod.URL + '/files').text, 'html.parser').find('div', {'class': 'listing-container'})
+    page_one = BeautifulSoup(requests.get(f'{BASE}{mod.URL}/files').text, 'html.parser').find('div', {'class': 'listing-container'})
     header = page_one.find('div', {'class': 'listing-header'})
     for version in header.find('div', {'class': 'listing-filters-wrapper'}).find('select', {'id': 'filter-game-version'}).find_all('option'):
         if version['value']:
@@ -178,7 +178,7 @@ def get_mod_files(c, mod):
     total_pages = int(pages[-1].text) if pages else 1
 
     def process_page(page_num, page=None):
-        for file in (page or BeautifulSoup(requests.get('{}{}/files?page={}'.format(BASE, mod.URL, page_num)).text, 'html.parser')).find_all('tr', {'class': 'project-file-list-item'}):
+        for file in (page or BeautifulSoup(requests.get(f'{BASE}{mod.URL}/files?page={page_num}').text, 'html.parser')).find_all('tr', {'class': 'project-file-list-item'}):
             typ = file.find('td', {'class': 'project-file-release-type'}).find('div')['class'][0].split('-')[0][0].upper()
             a = file.find('div', {'class': 'project-file-name-container'}).find('a')
             i = int(a['href'].split('/')[-1])
@@ -215,7 +215,7 @@ def get_mod_file_changelog(c, file_id):
     file_dependencies = {str(f.File_ID) + f.Dependency for f in c.execute('SELECT File_ID, Dependency FROM Mod_File_Dependency')}
     add_file_dependencies = []
     url = list(c.execute('SELECT URL FROM Mod WHERE Name=?', (file_id.Mod,)))[0].URL
-    html = BeautifulSoup(requests.get('{}{}/files/{}'.format(BASE, url, file_id.ID)).text, 'html.parser')
+    html = BeautifulSoup(requests.get(f'{BASE}{url}/files/{file_id.ID}').text, 'html.parser')
     file_id.Uploaded_By = html.find('div', {'class': 'user-tag'}).find_all('a')[-1].text
     file_id.Changelog = str(html.find('div', {'class': 'logbox'}))
     for dependencies in html.find_all('div', {'class': 'project-tag-info'}):
