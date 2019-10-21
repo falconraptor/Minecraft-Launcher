@@ -13,4 +13,4 @@ pywebview==2.4
 pywin32-ctypes==0.2.0
 requests==2.21.0
 soupsieve==1.8
-urllib3==1.24.1
+urllib3==1.24.2
